@@ -81,11 +81,13 @@ find . | cpio
 
 	https://adsaria.hatenadiary.org/entry/20080820/1219242110
 
-fdiskでtypeを変更し、/dev以下をコピーして grub-installが正常終了した後は、シングルDISKで正常起動して、全環境が正常動作している事を確認する。P2Vをしないなら、これで作業は完了。３時間程度だっただろうか。好みで、再びmd-raid化しても良い。しかしこのままのパーティション状況では、P2V化しても多分動作しない。
+fdiskでtypeを変更し、/dev以下をコピーして grub-installが正常終了した後は、シングルDISKで正常起動して、全環境が正常動作している事を確認する。P2Vをしないなら、これで復旧作業は完了。３時間程度だっただろうか。好みで、再びmd-raid化しても良い。しかしこのままのパーティション状況では、P2V化しても多分動作しない。
+
+次項から、現在正常動作している環境をP2Vする方法を説明する。
 
 ## 仮想DISKイメージ変換前処理
 
-試行錯誤の結果、物理DISKを仮想DISK化するには単一パーティションである必要があるらしい。DISKが複数パーティションあると、アライメントやブロック開始位置がずれる様子だ。従って、swapパーティーションを止めてswapfile化する必要がある。
+試行錯誤の結果、物理DISKを仮想DISK化するには単一パーティションにする必要があるらしい。複数パーティションをP2V可して正常動作させる方法は確認できなかった。DISKが複数パーティションあると、変換した時にパーティーション管理テーブル(この場合はMBR)のアライメントやブロック開始位置がずれる様子だ。従って swapパーティーションは削除してswapfile化する必要がある。
 
 単一パーティション化の作業は次の通り。
 
@@ -93,15 +95,14 @@ fdiskでtypeを変更し、/dev以下をコピーして grub-installが正常終
 - /dev/sda1を拡張（/dev/sda2以降は後方に移動）
 - /dev/sda1に/dev/sda2以降の内容をコピー（cpio利用）
 - swapパーティーションをswapfile化
-- /etc/fstabs修正
+- /etc/fstab 修正
 - grub-insallの再実行（後で判明したが、結局ここでは起動出来ないので不要だった）
 
 従ってやらなくても良いのだが、一応正常動作確認で、上記変更完了後、再起動して単一パーティションで正常動作を確認する。
 
-パーティーションのいリサイズにはGPartedを使用する。このためだけに最新GParted環境を作ってられないので、この際なのでUSBブータブルな、GPartedを作成して使用した。
+パーティーションの移動とリサイズにはGPartedを使用する。このためだけに最新GParted環境を作ってられないので、この際なのでUSBブータブルな、GPartedを作成して使用した。
 
 ### [ポイント：USBブータブルGParted作成](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
-
 
 - 参考ページ
 
@@ -109,50 +110,79 @@ fdiskでtypeを変更し、/dev以下をコピーして grub-installが正常終
 
 	https://itneko.blogspot.com/2019/01/usbgparted-live.html
 
-ファイルのコピーは cpio 一択。
-
 ### [ポイント：cpio](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/cpio.md)
 
 
 ## 仮想DISKイメージへの変換（作成）
 
-使うツールはdd。こんな感じ。
+ddイメージの作成とVHD変換（作成）をLinux上で行う。
 
-重要な点は、DISKの後ろの方（パーティション）は使っていなかったため、仮想化の際、DISK丸ごとを対象とするのではなく、前半部分だけを仮想化対象としたかった。イメージ作成時にサイズ指定ができるのは、多分 **dd** の方法だけの様子。
+### ddイメージの作成
 
-この辺で、最初からSSDにしておけば良かったと気づく。
+安定動作しているLinuxシステム（何でも良い）の /dev/sdb に前項で単一パーティション化としたドライブを接続し、ddイメージを作成する。
 
-変換実行。VirtualBox利用。VirtualBoxの最新版は当然ながらx86_64だけの対応のため、VirtualBoxのサイトで、適当に古いi686版を指定して入手、インストール。インストール先もCentOS5.11として、そのCentOS5.11上でVboxを実行して変換作業を行った。当然ながらSSDの方が高速に進む。
+今回の作業では、DISKの後ろの方（パーティション）は使っていなかったため、仮想化するドライブの容量を少なくするため、全体仮想化の際DISK丸ごとを対象とするのではなく、前半部分だけを仮想化対象としたかった。
 
-#### 参考サイト（英語と日本語）
-★★参考サイト
+DISKドライブやパーティーションからVHD変換用イメージ（生データ）を作成するツールは何種類かあるらしいが、イメージ作成時にサイズ指定ができるのは、多分 **dd** の方法だけの様子。先頭から64GB分をddイメージ化するコマンドは次の通り。sdaもsdbもSSDにしておくと速い。
 
-### ポイント：古いVirtualBoxの入手
+```sh
+# dd if=/dev/sdb bs=4k conv=noerror,sync of=myfile.dd count=16093114
+```
 
-変換後、作成されたVHDを何かと作業し易いVHDXにさらに変換。VHDファイルは結果的にVHDX作成後には、使用しなかったので、変換後が消して、VHDX形式だけバックアップを取れば良い。
+### VHD変換・作成
+
+公開されている VirtualBox 利用してddイメージをVHDに変換する。今回の作業ホストは、ターゲットに合わせて前述の新規インストールした CentOS5.11(i386) を使用した。VirtualBoxの最新版は当然ながらx86_64だけの対応のため、VirtualBoxのサイトで、適当に古い4.3.40 のi386版を指定して入手、インストール。インストール先もCentOS5.11として、そのCentOS5.11上で次の通り、インストールした **VBoxManage** コマンドを使用して変換した。 
+
+```sh
+# VBoxManage convertfromraw myfile.dd myfile.vhd --format VHD
+```
+
+#### VirtualBox 4.3.40 の入手
+
+VirtualBox Download ページで、**VirtualBox older buiulds** を選択。
+
+![VirtualBox Download ページ](Image/VBolder_buildsP.png)
+##### VirtualBox Download ページ<br/>
+https://www.virtualbox.org/wiki/Downloads
+
+**VirtualBox 4.3 (no longer supported, support ended 2015/12)**<br/>
+を選択して進み、<br/>
+**Oracle Linux 5 ("OL5") / Red Hat Enterprise Linux 5 ("RHEL5") / CentOS 5 i386**<br/>
+をダウンロード 
+
+![Download VirtualBox (Old Builds): VirtualBox 4.3](Image/VB4_3P.png)
+##### Download VirtualBox (Old Builds): VirtualBox 4.3 ページ<br/>
+
+https://www.virtualbox.org/wiki/Download_Old_Builds_4_3
+
+#### 参考サイト（英語）
+https://superuser.com/questions/410940/how-to-create-vhd-disk-image-from-a-linux-live-system
+
+#### 参考サイト（日本語）
+https://qastack.jp/superuser/410940/how-to-create-vhd-disk-image-from-a-linux-live-system
 
 ## 起動用仮想DISKの作成
 
-単一パーティションで作成したVHDXファイルは、他の仮想化したLinuxVMから参照することができても、どうやってもそれ自体、単体で起動する事はできない。原因不明だ。
+単一パーティションで作成したVHDXファイルは、他の仮想化したLinuxVMから参照することができても、そのままではどうやってもそれ自体、単体で起動する事はできない。どうやら Hyper-V での起動ドライブのMBRには、特別な設定が必要らしい。
 
-仕方なく新規で起動用のOS(CentOS5.11)を新たに仮想マシンにインストール、仮想DISKとして作成し、それをブートストラップにして、別VHDXの本家イメージを誘導することにする。SSDの方が高速に進む。ホスト側マシンも速い方が良いだろう。重要な事は、この古い CentOS5.11 が比較的新しいHyper-V環境で起動し、安定動作する事を確認することだ。この一見単純なインストール作業が、実に何回もトラブルが発生し、再インストールが何回も必要だったので非常に注意が必要だ。ここで作成するCentOS5.11の仮想DISKサイズは30GBとした。
+仕方なく新規で起動用のOS(CentOS5.11)を新たに仮想マシンにインストール、仮想DISKとして作成し、それをブートストラップにして、別VHDXの本家イメージを誘導することにする。SSDの方が高速に進む。ホスト側マシンも速い方が良いだろう。重要な事は、この古い CentOS5.11 が比較的新しいHyper-V環境で起動し、安定動作する事を確認することだ。この一見単純なインストール作業が、実に何回もトラブルが発生し、再インストールが何回も必要だったので非常に注意が必要だ。ここで作成する起動用のCentOS5.11の仮想DISKサイズは30GBとした。
 
-ここで新規インストールするCentOS5.11もパーティションは切らずに、カスタムパーティションを作成で単一パーティションとする。swapパーティション作成を推奨するメッセージが出るが、インストールの際は無視し、インストール完了後にswapfileを作成してfstabを書き換える。
+ここで新規インストールする起動用のCentOS5.11もパーティションは切らずに、カスタムパーティションを作成で単一パーティションとする。swapパーティション作成を推奨するメッセージが出るが、インストールの際は無視し、インストール完了後にswapfileを作成してfstabを書き換える。
 
 ### ポイント:swapfile
 
 8192GBのswapfileの作成と設定
 ```sh
-dd if=/dev/zero of=swapfile bs=1M count=8192
-mkswap swapfile
-chmod 600 swapfile
+# dd if=/dev/zero of=swapfile bs=1M count=8192
+# mkswap swapfile
+# chmod 600 swapfile
 ```
 
 fstabの内容
 
 ```sh
-cat /etc/fstab
-
+# cat /etc/fstab
+... (省略) ...
 /swapfile           swap               swap    defaults        0 0
 ```
 
