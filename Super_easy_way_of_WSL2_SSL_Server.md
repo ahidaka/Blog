@@ -6,7 +6,7 @@ Super easy and simple way to access WSL2 SSH server from an external machine.
 ---
 
 ## Summary
-I found Scott Hanselman's blog article. it gave me good advice to make settings of WSL2 SSH server host. I brushed up and added some trick to the contents.
+I found [Scott Hanselman's blog article](https://www.hanselman.com/blog/CommentView.aspx). it gave me good advice to make settings of WSL2 SSH server host. I brushed up and added some trick to the contents.
 After that, It becomes super easy way to access WSL2 SSH server from an external machine.
 
 There are three main solutions.
