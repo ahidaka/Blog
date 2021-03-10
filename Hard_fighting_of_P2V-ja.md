@@ -1,69 +1,64 @@
-# hard Fighting of P2V
+# P2V 悪戦苦闘
 ---
-3/10/2021 Translated
+7/23/2020 作成
 
-Based on CentOS 5, the fighting story of successfully converting Linux on a physical machine in operation to VHDX of Hyper-V.
+CentOS5を題材に、運用中の物理マシンのLinuxを無事に Hyper-V のVHDXに変換するまでの奮戦記。
 
 ---
 
-## Subject
-One side RAID-DISK of md-mirror on an old CentOS 5.11 / i386 machine failed and became unbootable. I took this opportunity to replace it as a guest OS on a Hyper-V virtual DISK on a Windows Server, with the data, settings, and program binaries intact, and run it as it was before.
+## 課題
+md-mirrorの片側RAID-DISKが故障して、起動不能になったCentOS5.11/i386マシンイメージを、この機会にデータや設定、プログラムバイナリーをそのまま、Hyper-Vの仮想DISKのゲストOSとしてWindows Server上に載せ替え、元あった通りに運用する。
 
-That's all there is to it. I had planned to complete it in about half a day, but I encountered various troubles, and it took five days against my expectation, so I'm writing it down as a memo for myself before I forget. There was no similar information on the Internet, and it was quite difficult.
+たったこれだけの事。半日程度で完了させるつもりだったが、実に様々なトラブルに遭遇し、予想に反して5日もかかってしまったので、忘れる前に自分用のメモとしてまとめておく。ネット上には、似たような情報すら無く結構大変だった。
 
-Why do I need to do this nowadays? Why did it become impossible to start just because one side RAID-DISK failed?
-There are many reasons, but I'll leave those aside and the main reasons that stand out are as follows.
+なぜ今時こんな事をする必要があるのか？なぜ片側RAID-DISKが故障しただけで起動不能になったのか？諸般の事情が多数あるが、それらは置いておき、表立った主な理由は次の通りである。
 
-1. complete preservation of data and environment during operation
-2. improved maintainability in the future
-3. minimizing the recovery time
-4. accumulation of know-how for similar work
+1. 運用中データ＆環境の完全保全
+2. 今後のメンテナンス性の向上
+3. 復旧作業時間の最短化
+4. 同種作業のノウハウ蓄積
 
-These were the goals of the project. As a result, we were able to achieve all of them except for **#3**.  In the following, I will show you how to successfully complete the work and the points and points of failure, while keeping the things I researched and tried unsuccessfully to a minimum. In addition, the actual data migrated by P2V was about 60GB.
+この様な目標だった。結果としては、3.を除いて達成できた。以下、調べた事や試して失敗した事は最低限として、作業を成功させる方法とポイントやハマり処を示す。なお実際にP2Vで移行したデータは、60GB程度だった。
 
-Translated with www.DeepL.com/Translator (free version)
+## 手順とツール
 
-## Procedure and Tools
+全体の手順は次の通り。
 
-The overall steps are as follows:
+1. データの保全と吸出し
+2. 仮想DISKイメージ変換前処理
+3. 仮想DISKイメージへの変換（作成）
+4. 起動用仮想DISKの作成
+5. 運用環境の作成
 
-1. Data preservation and sucking out
-2. Preprocess for virtual DISK image conversion
-3. Convert to virtual DISK image (creation)
-4. Create virtual DISK for startup.
-5. Create of operating environment
-
-The tools and environment used were as follows.
+使用したツールや環境は次の通り。
 
 - [MiniTool Partition Wizard 9.1 Free edition](https://www.partitionwizard.com/free-partition-manager.html)
 - GParted https://gparted.org/
 - [これのUSB化](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
-- CentOS 5.11インストールDVD 1/2, 2/2
+- CentOS5.11インストールDVD 1/2, 2/2
 <br/><br/>
-- Some empty DISKs for backup and work (SSD is recomended)
-- Windows 10 or Windows Server for the target host
-- Original or free CentOS 5.11 / i386 installed machine
-- Windows 8.1 or Windows Server 2016 or earlier machine for booting VHDX creation 
+- バックアップや作業用の空のDISK数個（SSDが望ましい）
+- ターゲットホストのWindows 10またはWindows Server
+- 元の、または空いているCentOS 5.11/i386インストール可能マシン
+- 起動VHDX作成用の Windows 8.1 または Windows Server 2016 以前のマシン
 
-## Data preservation and sucking out
+## データの保全と吸出し
 
-There are few tools that save and copy the whole DISK. GParted that should be able to do everything related to the DISK drive does not support the backup and copy of the whole DISK even in the latest version.
+DISK丸ごとを保存、コピーするツールは少ない。DISKドライブ関係は何でもできるはずのGPartedは、最新版でもDISK丸ごとバックアップ・コピーには対応していない。そこでドライブコピーが可能だった手持ちツールのPartition Wizard 9.1を使用して、まずは生き残ったドライブ内容を別DISKにバックアップした。途中で気付いたが、200GB程度の作業用のSSDがいくつかあると作業が速くなる。
 
-So I used Partition Wizard 9.1, one of the tools I had that could copy drives, and backed up the whole image of the surviving drive to another DISK. On the way, I noticed that having a couple of SSDs of about 200GB for work would speed up the process.
+なお CentOS5 の md 0.90 のメタデータ（管理データ）はパーティション内の最後にあるため、パーティションタイプを変更しなくても、ext3でマウントして参照できる。生き残った方のドライブをfsckと目視で壊れてないか一応内容を確認した。なお後日談だが、故障したと思っていた方のドライブも、SMARTでのエラーは一切無かった。
 
-Note that the metadata (management data) of md 0.90 in CentOS 5 is located at the end of the partition, so it can be mounted and referenced using ext3 without changing the partition type. I checked the contents of the surviving drive with fsck and visually to see if it was damaged. As a side note, the drive that I thought had failed did not have any SMART errors at all.
+### 復旧時トラブルと対応
 
-### Trouble and Response of recovery 
+確認用と万が一のために作業ターゲットと同じCentOS5.11/i386を、物理DISKに新規インストールして作成した。不要だったかも知れないが、後述の/dev復旧時のリファレンスとして役立った。以下は、生き残ったドライブ（/dev/sdb＝コピー側）単体で起動させて動作確認するまでの手順とトラブルである。
 
-For confirmation and just in case, CentOS 5.11/i386, the same as the work target, was newly installed on a physical DISK and created. It may have been unnecessary, but it was useful as a reference for the /dev recovery described below. The following is the procedure and trouble until I booted the surviving drive (/dev/sdb = copy side) alone and checked its operation.
+- パーティションタイプ変更はfdiskでtypeをFDから83(linux data)または82(swap)に変更。
 
-- To change the partition type, use fdisk to change the type from FD to 83 (linux data) or 82 (swap).
+- メタデータを削除するmdadm -zero-superblockがなぜかエラーになる。気持ち悪いが無視することにした。
 
-- For some reason, mdadm -zero-superblock, which removes metadata, gives an error. It's weird, but I decided to ignore it.
+- 原因不明だが生き残ったDISKの /dev/以下が空だった。これにより生き残ったDISKのコピーイメージにgrub-installしても、起動しなかった。元のシステムが起動しなくなったのも、これが原因かもしれない。この問題が無ければ起動するはず。
 
-- I don't know why, but the /dev/ of the surviving DISK was empty. As a result, even if I did a grub-install on a copy image of the surviving DISK, it would not boot. This may have been the reason why the original system stopped booting. If this problem is not there, it should boot.
-
-	Since I couldn't create /dev manually with the mknod command, I used cpio to copy /dev from the newly installed CentOS. However, since there are device nodes in subdirectories under /dev, be sure to copy them with **cpio** as follows.
+	mknodコマンド手作業で/dev以下を作っていられないため、cpioで新規インストールのCentOSから/dev以下をコピー。ただし /dev以下はサブディレクトリにもデバイスノードがあるため、必ず次の様に **cpio** でコピーすること。
 
 ```sh
 find . | cpio
