@@ -37,8 +37,8 @@ The tools and environment used were as follows.
 
 - [MiniTool Partition Wizard 9.1 Free edition](https://www.partitionwizard.com/free-partition-manager.html)
 - GParted https://gparted.org/
-- [これのUSB化](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
-- CentOS 5.11インストールDVD 1/2, 2/2
+- [Convert this to USB Flash](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
+- CentOS 5.11 install DVD 1/2, 2/2
 <br/><br/>
 - Some empty DISKs for backup and work (SSD is recomended)
 - Windows 10 or Windows Server for the target host
@@ -148,7 +148,7 @@ Then, install it. The installation destination was also CentOS 5.11, and the con
 
 On the VirtualBox Download page, select **VirtualBox older buiulds**.
 
-![VirtualBox Download ページ](Image/VBolder_buildsP.png)
+![VirtualBox Download page](Image/VBolder_buildsP.png)
 ##### VirtualBox Download page<br/>
 https://www.virtualbox.org/wiki/Downloads
 
