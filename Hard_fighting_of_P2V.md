@@ -66,148 +66,145 @@ For confirmation and just in case, CentOS 5.11/i386, the same as the work target
 	Since I couldn't create /dev manually with the mknod command, I used cpio to copy /dev from the newly installed CentOS. However, since there are device nodes in subdirectories under /dev, be sure to copy them with **cpio** as follows.
 
 ```sh
-find . | cpio
+# find . | cpio
 ```
 
-- grub-installの方法（必ずCentOS 5.11 インストールCD使用）
+- How to install grub (be sure to use the CentOS 5.11 installation CD)
 
-	他のドライブで起動したLinux から実行する、複数ドライブを使用した grub-install ではどうやっても正常起動しない。（昔はできたはずだが）仕方なく DVDからレスキューモードで起動して grub-install を実行したところ、問題無く起動する様になった。
+	No matter how I try to do a grub-install using multiple drives, running from Linux booted on another drive, it does not boot properly.
+	I thought I could do it in the past, but I decided to give up. I had no choice but to boot from a DVD in rescue mode and run grub-install, and it booted without any problems.
 
-### ポイント：LinuxにおけるgrubによるMBRの修復方法
+### Point: How to repair MBR with grub of Linux
 
-レスキューモード(F5)で立ち上げて、下記を実行。
+Start up in rescue mode (F5) and execute the following.
 
 ```sh
 # chroot /mnt/sysimage/
 # grub-install /dev/sda
 ```
 
-- 参考サイト
+If you don't use P2V, the recovery process is complete. If you prefer, you can md-raid it again. However, in this partition situation, P2V will probably not work.
 
-	https://adsaria.hatenadiary.org/entry/20080820/1219242110
+In the next section, we will explain how to P2V an environment that is currently working properly.
 
-fdiskでtypeを変更し、/dev以下をコピーして grub-installが正常終了した後は、シングルDISKで正常起動して、全環境が正常動作している事を確認する。P2Vをしないなら、これで復旧作業は完了。３時間程度だっただろうか。好みで、再びmd-raid化しても良い。しかしこのままのパーティション状況では、P2V化しても多分動作しない。
+## Virtual DISK image conversion pre-processing
 
-次項から、現在正常動作している環境をP2Vする方法を説明する。
+As a result of trial and error, it seems that in order to turn a physical DISK into a virtual DISK, it needs to be a single partition.
+I was not able to find a way to make multiple partitions work properly by converting them to P2V.
+If there are multiple partitions on the DISK, the alignment and block start position in the partition management table (MBR in this case) will shift when converted.
+Therefore, it is necessary to delete the swap partition and convert it to a swapfile.
 
-## 仮想DISKイメージ変換前処理
+The process of single partitioning is as follows
 
-試行錯誤の結果、物理DISKを仮想DISK化するには単一パーティションにする必要があるらしい。複数パーティションをP2V可して正常動作させる方法は確認できなかった。DISKが複数パーティションあると、変換した時にパーティーション管理テーブル(この場合はMBR)のアライメントやブロック開始位置がずれる様子だ。従って swapパーティーションは削除してswapfile化する必要がある。
+- Delete unnecessary data and partitions.
+- Extend /dev/sda1 (move /dev/sda2 and later to the back)
+- Copy the contents of /dev/sda2 and later to /dev/sda1 (using cpio)
+- Turn swap partitions into swapfile
+- Modify /etc/fstab
+- Rerun grub-insall (as it turned out later, it was not necessary since it was not possible to boot here after all)
 
-単一パーティション化の作業は次の通り。
+For the purpose of confirming normal operation, reboot just in case after the above changes are completed, and confirm normal operation with a single partition.
 
-- 不要なデータやパーティションの削除
-- /dev/sda1を拡張（/dev/sda2以降は後方に移動）
-- /dev/sda1に/dev/sda2以降の内容をコピー（cpio利用）
-- swapパーティーションをswapfile化
-- /etc/fstab 修正
-- grub-insallの再実行（後で判明したが、結局ここでは起動出来ないので不要だった）
+Use GParted to move and resize the partitions. Since I don't have time to create the latest GParted environment just for this purpose, I created a USB bootable GParted and used it.
 
-従ってやらなくても良いのだが、一応正常動作確認で、上記変更完了後、再起動して単一パーティションで正常動作を確認する。
+### [Point: Create USB bootable GParted](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
 
-パーティーションの移動とリサイズにはGPartedを使用する。このためだけに最新GParted環境を作ってられないので、この際なのでUSBブータブルな、GPartedを作成して使用した。
-
-### [ポイント：USBブータブルGParted作成](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/GParted-usb.md)
-
-- 参考ページ
+- Reference page
 
 	https://gparted.org/liveusb.php
 
 	https://itneko.blogspot.com/2019/01/usbgparted-live.html
 
-### [ポイント：cpio](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/cpio.md)
+### [Point: cpio](https://github.com/ahidaka/LinuxDevelopersGuide/blob/master/cpio.md)
 
 
-## 仮想DISKイメージへの変換（作成）
+## Convert to virtual DISK image (create)
 
-ddイメージの作成とVHD変換（作成）をLinux上で行う。
+Create a dd image and perform VHD conversion (creation) on Linux.
 
-### ddイメージの作成
+### Creating a dd image
 
-安定動作しているLinuxシステム（何でも良い）の /dev/sdb に前項で単一パーティション化としたドライブを接続し、ddイメージを作成する。
+Connect the single partitioned drive in the previous section to /dev/sdb on a stable Linux system (anything is fine) and create a dd image.
 
-今回の作業では、DISKの後ろの方（パーティション）は使っていなかったため、仮想化するドライブの容量を少なくするため、全体仮想化の際DISK丸ごとを対象とするのではなく、前半部分だけを仮想化対象としたかった。
+Since we were not using the back part of the DISK (partition), we wanted to virtualize only the first half of the DISK instead of the entire DISK in order to reduce the capacity of the drive to be virtualized.
 
-DISKドライブやパーティーションからVHD変換用イメージ（生データ）を作成するツールは何種類かあるらしいが、イメージ作成時にサイズ指定ができるのは、多分 **dd** の方法だけの様子。先頭から64GB分をddイメージ化するコマンドは次の通り。sdaもsdbもSSDにしておくと速い。
+I heard that there are several tools for creating images (raw data) for VHD conversion from DISK drives and partitions, but the only one that allows you to specify the size at the time of image creation is probably the **dd** method. The command to make a dd image of 64GB from the top is as follows. sda and sdb are both SSD, so it's faster.
 
 ```sh
 # dd if=/dev/sdb bs=4k conv=noerror,sync of=myfile.dd count=16093114
 ```
 
-### VHD変換・作成
+### VHD conversion and creation
 
-公開されている VirtualBox 利用してddイメージをVHDに変換する。今回の作業ホストは、ターゲットに合わせて前述の新規インストールした CentOS5.11(i386) を使用した。VirtualBoxの最新版は当然ながらx86_64だけの対応のため、VirtualBoxのサイトで、適当に古い4.3.40 のi386版を指定して入手、インストール。インストール先もCentOS5.11として、そのCentOS5.11上で次の通り、インストールした **VBoxManage** コマンドを使用して変換した。 
+Convert the dd image to a VHD using the public VirtualBox. This time, I used the newly installed CentOS5.11 (i386) for the target host, and since the latest version of VirtualBox only supports x86_64, I went to the VirtualBox site and got the old 4.3.40 i386 version.
+Then, install it. The installation destination was also CentOS 5.11, and the conversion was done on CentOS 5.11 using the installed **VBoxManage** command as follows. 
+
 
 ```sh
 # VBoxManage convertfromraw myfile.dd myfile.vhd --format VHD
 ```
 
-#### VirtualBox 4.3.40 の入手
+#### Obtain VirtualBox 4.3.40
 
-VirtualBox Download ページで、**VirtualBox older buiulds** を選択。
+On the VirtualBox Download page, select **VirtualBox older buiulds**.
 
 ![VirtualBox Download ページ](Image/VBolder_buildsP.png)
-##### VirtualBox Download ページ<br/>
+##### VirtualBox Download page<br/>
 https://www.virtualbox.org/wiki/Downloads
 
+Select
 **VirtualBox 4.3 (no longer supported, support ended 2015/12)**<br/>
-を選択して進み、<br/>
-**Oracle Linux 5 ("OL5") / Red Hat Enterprise Linux 5 ("RHEL5") / CentOS 5 i386**<br/>
-をダウンロード 
+to proceed, and download
+**Oracle Linux 5 ("OL5") / Red Hat Enterprise Linux 5 ("RHEL5") / CentOS 5 i386**.<br/>
 
 ![Download VirtualBox (Old Builds): VirtualBox 4.3](Image/VB4_3P.png)
 ##### Download VirtualBox (Old Builds): VirtualBox 4.3 ページ<br/>
 
 https://www.virtualbox.org/wiki/Download_Old_Builds_4_3
 
-#### 参考サイト（英語）
+#### Reference page
 https://superuser.com/questions/410940/how-to-create-vhd-disk-image-from-a-linux-live-system
 
-#### 参考サイト（日本語）
-https://qastack.jp/superuser/410940/how-to-create-vhd-disk-image-from-a-linux-live-system
+## Create a virtual DISK for booting
 
-## 起動用仮想DISKの作成
+Even though the VHDX file created on a single partition can be referenced by other virtualized Linux VMs, it cannot be booted by itself by any means. Apparently, the MBR of the boot drive in Hyper-V requires a special configuration.
 
-単一パーティションで作成したVHDXファイルは、他の仮想化したLinuxVMから参照することができても、そのままではどうやってもそれ自体、単体で起動する事はできない。どうやら Hyper-V での起動ドライブのMBRには、特別な設定が必要らしい。
+The SSD is faster. The SSD will be faster, and the host machine should be faster as well. The important thing is to make sure that this old CentOS 5.11 will boot and run stably in the relatively new Hyper-V environment. This seemingly simple installation process caused a lot of trouble and required many reinstallations, so be very careful. The virtual disk size of the CentOS 5.11 bootstrap to be created here was set to 30GB.
 
-仕方なく新規で起動用のOS(CentOS5.11)を新たに仮想マシンにインストール、仮想DISKとして作成し、それをブートストラップにして、別VHDXの本家イメージを誘導することにする。SSDの方が高速に進む。ホスト側マシンも速い方が良いだろう。重要な事は、この古い CentOS5.11 が比較的新しいHyper-V環境で起動し、安定動作する事を確認することだ。この一見単純なインストール作業が、実に何回もトラブルが発生し、再インストールが何回も必要だったので非常に注意が必要だ。ここで作成する起動用のCentOS5.11の仮想DISKサイズは30GBとした。
+The new CentOS 5.11 boot partition to be installed here will not be partitioned, but a custom partition will be created to make it a single partition. Create a swapfile and rewrite the fstab.
 
-ここで新規インストールする起動用のCentOS5.11もパーティションは切らずに、カスタムパーティションを作成で単一パーティションとする。swapパーティション作成を推奨するメッセージが出るが、インストールの際は無視し、インストール完了後にswapfileを作成してfstabを書き換える。
+### point:swapfile
 
-### ポイント:swapfile
+Create and configure an 8192GB swapfile.
 
-8192GBのswapfileの作成と設定
 ```sh
 # dd if=/dev/zero of=swapfile bs=1M count=8192
 # mkswap swapfile
 # chmod 600 swapfile
 ```
 
-fstabの内容
+Contents of fstab
 
 ```sh
 # cat /etc/fstab
-... (省略) ...
+... (Ommited) ...
 /swapfile           swap               swap    defaults        0 0
 ```
 
-https://centos.bungu-do.jp/archives/65
+### Points and cautions
 
+- Windows 10 is not available, Windows 8.1 is required.
 
-### ポイント・ハマり処
+The CentOS 5.11/i386 installation DVD is (relatively?) recent. Windows 10 Hyper-V will not boot. To be precise, it seems to boot, but keyboard input is not possible. The purpose of the work is to create a VHDX virtual DISK file that will boot CentOS5.11/i386. I haven't tried whether it boots on Windows Server 2019 or not.
 
-― Windows 10は使えずWindows 8.1が必要
+- Checkpoints for Windows 10 and other virtual DISKs
 
-CentOS5.11/i386のインストールDVDは、（割と最近の？）Windows 10 の Hyper-V では起動しない。正確には、起動しているらしいがキーボード入力ができない。作業の目的は CentOS5.11/i386 が起動するVHDX仮想DISKファイルを作成することである。従ってこの作業はやや古い、しかし安定動作しているWindows 8.1やWindows Server 2016等で行う必要がある。Windows Server 2019で起動するかどうかは試していない。
+	Checkpointing of the virtual DISK in Windows 10 and recent Windows Servers is set to automatic by default. This is not necessary for Windows 8.1 and other operating systems.
 
-- Windows 10 等の仮想DISKのチェックポイント
+## Create an operational environment
 
-	Windows 10や最近のWindows Server　の仮想DISKのチェックポイントはデフォルトで自動設定になっている。チェックポイントがあるとVHDXをコピーできないので、手動にして全チェックポイントを削除しておく。Windows 8.1等では必要ない。
+Once you have created an empty virtual disk that can boot and run stably, and a single partitioned VHDX with a confirmed stable image, all you need to do is combine them. Note the OS version, contents and placement of /boot, and loadable modules in /lib/modules.
 
-## 運用環境の作成
+The resource management of Hyper-V is not specifically described. You can set the memory, dynamic, DISK, number of CPUs, etc. as needed.
 
-起動＆安定動作する空の仮想DISKが作成できて、安定動作確認済みのイメージの単一パーティション化したVHDXが用意してあれば、後はこれらを組み合わせるだけである。OSのバージョン、/boot 以下の内容と配置、/lib/modules以下のローダブルモジュールに注意。
-
-Hyper-Vのリソース管理については、特に記していない。メモリー、動的、DISK、CPU数など適宜設定して良い。
-
-以上
+That's all.
