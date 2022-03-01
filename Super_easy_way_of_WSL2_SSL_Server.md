@@ -1,6 +1,7 @@
 Super_easy_way_of_WSL2_SSL_Server.md
 ---
 Written on 8/23/2020
+Updated on 3/1/2022
 
 Super easy and simple way to access WSL2 SSH server from an external machine.
 ---
@@ -16,6 +17,11 @@ There are three main solutions.
 
 ## Details
 
+### Install ssh
+```sh
+$ sudo apt install ssh
+```
+
 ### Edit /etc/ssh/sshd_config
 ```sh
 ...STUFF ABOVE THIS...
@@ -29,6 +35,8 @@ PasswordAuthentication yes
 ```
 
 ### Generate SSH Key
+
+If you didn't make these keys, or you want to recreate them, do so.
 
 ```sh
 $ sudo ssh-keygen -t ecdsa -N '' -f /etc/ssh/ssh_host_ecdsa_key
