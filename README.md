@@ -1,6 +1,8 @@
 # Blog
 Blog entries of ahidaka for development
 
+[Top Page](https://ahidaka.github.io/Blog/)
+
 [日本語](README-ja.md)
 
 ## Table of content
